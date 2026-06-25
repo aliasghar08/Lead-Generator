@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "14190723695",
+    "project_id": "lead-generator-6a493",
+    "storage_bucket": "lead-generator-6a493.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:14190723695:android:8b6f042dd2147091dbc39a",
+        "android_client_info": {
+          "package_name": "com.example.lead_generator"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyC9s2yW_ekWNJd3wOxqnNXyI5kHqzgozF4"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
