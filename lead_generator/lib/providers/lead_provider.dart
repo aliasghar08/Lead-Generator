@@ -1,5 +1,5 @@
+import 'dart:io';
 import 'dart:convert';
-
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
@@ -22,14 +22,20 @@ class LeadProvider extends ChangeNotifier {
   bool get isLoadingSaved => _isLoadingSaved;
   String? get errorMessage => _errorMessage;
 
+  // ===== GET API BASE URL =====
+  String get _apiBaseUrl {
+    // For Flutter Web
+    return 'http://localhost:5000';
+  }
+
   // ===== HELPER: Get user's sub-collection reference =====
   CollectionReference get _userLeadsCollection {
     final user = _auth.currentUser;
     if (user == null) throw Exception('User not logged in');
     return _firestore
-        .collection('users')           // Root collection
-        .doc(user.uid)                 // User document
-        .collection('leads');          // Sub-collection for leads
+        .collection('users')
+        .doc(user.uid)
+        .collection('leads');
   }
 
   // ===== CREATE USER DOCUMENT =====
@@ -56,47 +62,53 @@ class LeadProvider extends ChangeNotifier {
     }
   }
 
- // In lib/providers/lead_provider.dart
-
-Future<List<Lead>> searchLeads(String businessName) async {
-  _isLoading = true;
-  _errorMessage = null;
-  notifyListeners();
-
-  try {
-    // Call your Python API
-    final response = await http.post(
-      Uri.parse('http://localhost:5000/scrape'),
-      headers: {'Content-Type': 'application/json'},
-      body: jsonEncode({'business_name': businessName}),
-    );
-
-    print('📊 Response status: ${response.statusCode}');
-    print('📊 Response body: ${response.body}');
-
-    if (response.statusCode == 200) {
-      final data = jsonDecode(response.body);
-      
-      List<Lead> results = (data['leads'] as List)
-          .map((lead) => Lead.fromJson(lead))
-          .toList();
-      
-      _leads = results;
-      return results;
-    } else {
-      throw Exception('Failed to fetch leads: ${response.statusCode}');
-    }
-  } catch (e) {
-    print('❌ Error: $e');
-    _errorMessage = e.toString();
-    return [];
-  } finally {
-    _isLoading = false;
+  // ===== SEARCH LEADS =====
+  Future<List<Lead>> searchLeads(String businessName) async {
+    _isLoading = true;
+    _errorMessage = null;
     notifyListeners();
-  }
-}
 
-  // ===== SAVE LEAD (Hierarchical Structure) =====
+    try {
+      final url = '$_apiBaseUrl/scrape';
+      print('📡 Calling API: $url');
+      
+      final response = await http.post(
+        Uri.parse(url),
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode({'business_name': businessName}),
+      );
+
+      print('📊 Response status: ${response.statusCode}');
+      print('📊 Response body: ${response.body}');
+
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        
+        if (data['success'] == true && data['leads'] != null) {
+          List<Lead> results = (data['leads'] as List)
+              .map((lead) => Lead.fromJson(lead))
+              .toList();
+          
+          _leads = results;
+          return results;
+        } else {
+          _leads = [];
+          return [];
+        }
+      } else {
+        throw Exception('Failed to fetch leads: ${response.statusCode}');
+      }
+    } catch (e) {
+      print('❌ Error: $e');
+      _errorMessage = 'Could not connect to server. Make sure the API is running.';
+      return [];
+    } finally {
+      _isLoading = false;
+      notifyListeners();
+    }
+  }
+
+  // ===== SAVE LEAD =====
   Future<void> saveLead(Lead lead) async {
     try {
       final user = _auth.currentUser;
@@ -105,10 +117,8 @@ Future<List<Lead>> searchLeads(String businessName) async {
       print('👤 User ID: ${user.uid}');
       print('💼 Saving lead: ${lead.businessName}');
 
-      // Ensure user document exists
       await createUserDocument();
 
-      // Check if lead already exists in user's sub-collection
       final existing = await _userLeadsCollection
           .where('businessName', isEqualTo: lead.businessName)
           .get();
@@ -117,7 +127,6 @@ Future<List<Lead>> searchLeads(String businessName) async {
         throw Exception('This lead is already saved');
       }
 
-      // Save to user's sub-collection
       await _userLeadsCollection.add({
         'businessName': lead.businessName,
         'ownerName': lead.ownerName,
@@ -130,8 +139,6 @@ Future<List<Lead>> searchLeads(String businessName) async {
       });
       
       print('✅ Lead saved successfully!');
-      
-      // Refresh saved leads
       await getSavedLeads();
     } catch (e) {
       print('❌ Error in saveLead: $e');
@@ -139,7 +146,7 @@ Future<List<Lead>> searchLeads(String businessName) async {
     }
   }
 
-  // ===== GET SAVED LEADS (FIXED NULL SAFETY) =====
+  // ===== GET SAVED LEADS =====
   Future<List<Lead>> getSavedLeads() async {
     _isLoadingSaved = true;
     _errorMessage = null;
@@ -161,9 +168,8 @@ Future<List<Lead>> searchLeads(String businessName) async {
       print('📊 Found ${snapshot.docs.length} leads');
 
       final leads = snapshot.docs.map((doc) {
-        final data = doc.data() as Map<String, dynamic>?; // Cast to nullable
+        final data = doc.data() as Map<String, dynamic>?;
         
-        // Use null-safe access with default values
         return Lead(
           id: doc.id,
           businessName: data?['businessName'] as String? ?? 'Unknown',
@@ -216,37 +222,35 @@ Future<List<Lead>> searchLeads(String businessName) async {
     }
   }
 
-  // Add this method to your LeadProvider
-Future<void> debugCheckUserData() async {
-  try {
-    final user = _auth.currentUser;
-    if (user == null) {
-      print('❌ No user logged in');
-      return;
+  // ===== DEBUG =====
+  Future<void> debugCheckUserData() async {
+    try {
+      final user = _auth.currentUser;
+      if (user == null) {
+        print('❌ No user logged in');
+        return;
+      }
+      
+      print('👤 User UID: ${user.uid}');
+      print('👤 User Email: ${user.email}');
+      
+      final userDoc = await _firestore.collection('users').doc(user.uid).get();
+      print('📄 User document exists: ${userDoc.exists}');
+      
+      if (userDoc.exists) {
+        print('📄 User data: ${userDoc.data()}');
+      }
+      
+      final leadsSnapshot = await _userLeadsCollection.get();
+      print('📊 Leads found: ${leadsSnapshot.docs.length}');
+      
+      for (var doc in leadsSnapshot.docs) {
+        print('📝 Lead: ${doc.data()}');
+      }
+    } catch (e) {
+      print('❌ Debug error: $e');
     }
-    
-    print('👤 User UID: ${user.uid}');
-    print('👤 User Email: ${user.email}');
-    
-    // Check if user document exists
-    final userDoc = await _firestore.collection('users').doc(user.uid).get();
-    print('📄 User document exists: ${userDoc.exists}');
-    
-    if (userDoc.exists) {
-      print('📄 User data: ${userDoc.data()}');
-    }
-    
-    // Check leads sub-collection
-    final leadsSnapshot = await _userLeadsCollection.get();
-    print('📊 Leads found: ${leadsSnapshot.docs.length}');
-    
-    for (var doc in leadsSnapshot.docs) {
-      print('📝 Lead: ${doc.data()}');
-    }
-  } catch (e) {
-    print('❌ Debug error: $e');
   }
-}
 
   // ===== CLEAR ERROR =====
   void clearError() {

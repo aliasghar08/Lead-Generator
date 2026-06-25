@@ -7,6 +7,8 @@ class Lead {
   final String socialMedia;
   final String address;
   final String website;
+  final String? rating;
+  final String? reviews;
 
   Lead({
     this.id,
@@ -17,6 +19,8 @@ class Lead {
     required this.socialMedia,
     required this.address,
     required this.website,
+    this.rating,
+    this.reviews,
   });
 
   factory Lead.fromJson(Map<String, dynamic> json) {
@@ -28,6 +32,8 @@ class Lead {
       socialMedia: json['socialMedia'] ?? '',
       address: json['address'] ?? '',
       website: json['website'] ?? '',
+      rating: json['rating']?.toString(),
+      reviews: json['reviews']?.toString(),
     );
   }
 
@@ -40,6 +46,8 @@ class Lead {
       'socialMedia': socialMedia,
       'address': address,
       'website': website,
+      'rating': rating,
+      'reviews': reviews,
     };
   }
 }

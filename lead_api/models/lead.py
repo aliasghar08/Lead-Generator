@@ -1,6 +1,6 @@
 class Lead:
     def __init__(self, businessName, ownerName='', phone='', email='', 
-                 socialMedia='', address='', website=''):
+                 socialMedia='', address='', website='', rating='', reviews=''):
         self.businessName = businessName
         self.ownerName = ownerName
         self.phone = phone
@@ -8,6 +8,8 @@ class Lead:
         self.socialMedia = socialMedia
         self.address = address
         self.website = website
+        self.rating = rating
+        self.reviews = reviews
     
     def to_dict(self):
         return {
@@ -17,5 +19,7 @@ class Lead:
             'email': self.email,
             'socialMedia': self.socialMedia,
             'address': self.address,
-            'website': self.website
+            'website': self.website,
+            'rating': self.rating,
+            'reviews': self.reviews
         }

@@ -39,95 +39,102 @@ def scrape_business():
         
         business_name = data['business_name']
         website = data.get('website')
+        limit = data.get('limit', 10)
         
         logger.info(f"🔍 Searching for: {business_name}")
         
         # Search using SerpAPI
-        result = serpapi_scraper.search(business_name)
+        results = serpapi_scraper.search(business_name, limit)
         
-        if result:
-            lead_data = {
-                'businessName': result.get('name', business_name),
-                'ownerName': result.get('owner', ''),
-                'phone': result.get('phone', ''),
-                'email': '',
-                'socialMedia': result.get('social', ''),
-                'address': result.get('address', ''),
-                'website': result.get('website', website or '')
-            }
+        leads = []
+        
+        if results:
+            logger.info(f"✅ Found {len(results)} real results from SerpAPI")
+            for result in results:
+                lead_data = {
+                    'businessName': result.get('name', business_name),
+                    'ownerName': result.get('owner', ''),
+                    'phone': result.get('phone', ''),
+                    'email': '',
+                    'socialMedia': result.get('social', ''),
+                    'address': result.get('address', ''),
+                    'website': result.get('website', website or ''),
+                    'rating': result.get('rating', ''),
+                    'reviews': result.get('reviews', '')
+                }
+                
+                # If no phone, try to find from website or generate
+                if not lead_data['phone'] and lead_data['website']:
+                    try:
+                        website_data = website_scraper.scrape(lead_data['website'])
+                        if website_data and website_data.get('phone'):
+                            lead_data['phone'] = website_data['phone']
+                    except:
+                        pass
+                
+                # If still no phone, leave empty (don't generate fake)
+                if not lead_data['phone']:
+                    lead_data['phone'] = ''
+                
+                # If no website, leave empty
+                if not lead_data['website']:
+                    lead_data['website'] = ''
+                
+                # Scrape website for emails
+                if lead_data['website']:
+                    try:
+                        website_data = website_scraper.scrape(lead_data['website'])
+                        if website_data:
+                            if website_data.get('email'):
+                                lead_data['email'] = website_data.get('email')
+                            if website_data.get('owner_name'):
+                                lead_data['ownerName'] = website_data['owner_name']
+                    except Exception as e:
+                        logger.error(f"Website scraping error: {e}")
+                
+                # Find social media handles
+                try:
+                    social_data = social_scraper.search(lead_data['businessName'])
+                    if social_data and not lead_data['socialMedia']:
+                        lead_data['socialMedia'] = social_data.get('instagram', '')
+                except Exception as e:
+                    logger.error(f"Social media search error: {e}")
+                
+                # Validate
+                if lead_data['phone']:
+                    lead_data['phone'] = validate_phone(lead_data['phone'])
+                
+                if lead_data['email']:
+                    lead_data['email'] = validate_email(lead_data['email'])
+                
+                lead = Lead(
+                    businessName=lead_data['businessName'],
+                    ownerName=lead_data['ownerName'],
+                    phone=lead_data['phone'],
+                    email=lead_data['email'],
+                    socialMedia=lead_data['socialMedia'],
+                    address=lead_data['address'],
+                    website=lead_data['website'],
+                    rating=lead_data['rating'],
+                    reviews=lead_data['reviews']
+                )
+                leads.append(lead.to_dict())
             
-            # If no phone, try fallback
-            if not lead_data['phone']:
-                logger.info("No phone found from SerpAPI, trying fallback...")
-                # Generate a realistic phone based on business name
-                clean_name = business_name.lower().replace(' ', '')
-                lead_data['phone'] = f"+91 98765 {hash(clean_name) % 100000:05d}"
-            
-            # If no website, use provided or generate
-            if not lead_data['website']:
-                clean_name = business_name.lower().replace(' ', '').replace('.', '')
-                lead_data['website'] = f"https://{clean_name}.com"
-            
-            # If no address, generate realistic
-            if not lead_data['address']:
-                cities = ['Mumbai', 'Delhi', 'Bangalore', 'Chennai', 'Hyderabad', 'Pune']
-                lead_data['address'] = f"{hash(business_name) % 1000 + 1}, MG Road, {cities[hash(business_name) % len(cities)]}, India"
-            
-        else:
-            # Fallback when SerpAPI returns no results
-            logger.info("No results from SerpAPI, using generated data")
-            clean_name = business_name.lower().replace(' ', '').replace('.', '')
-            lead_data = {
-                'businessName': business_name,
-                'ownerName': 'Dr. Sharma',
-                'phone': f"+91 98765 {hash(clean_name) % 100000:05d}",
-                'email': f"info@{clean_name}.com",
-                'socialMedia': f"@{clean_name}",
-                'address': f"123, Main Road, Mumbai, India",
-                'website': website or f"https://{clean_name}.com"
-            }
+            return jsonify({
+                'success': True,
+                'leads': leads,
+                'total': len(leads)
+            })
         
-        # Scrape website for emails if website exists
-        if lead_data['website']:
-            logger.info(f"🌐 Scraping website: {lead_data['website']}")
-            try:
-                website_data = website_scraper.scrape(lead_data['website'])
-                if website_data:
-                    if website_data.get('email'):
-                        lead_data['email'] = website_data.get('email')
-                    if website_data.get('owner_name'):
-                        lead_data['ownerName'] = website_data['owner_name']
-            except Exception as e:
-                logger.error(f"Website scraping error: {e}")
+        # ===== NO RESULTS FROM SERPAPI =====
+        logger.info("No results from SerpAPI, returning empty response")
         
-        # Find social media handles
-        logger.info("📱 Searching social media...")
-        try:
-            social_data = social_scraper.search(business_name)
-            if social_data and not lead_data['socialMedia']:
-                lead_data['socialMedia'] = social_data.get('instagram', '')
-        except Exception as e:
-            logger.error(f"Social media search error: {e}")
-        
-        # Validate
-        if lead_data['phone']:
-            lead_data['phone'] = validate_phone(lead_data['phone'])
-        
-        if lead_data['email']:
-            lead_data['email'] = validate_email(lead_data['email'])
-        
-        lead = Lead(**lead_data)
-        
-        logger.info(f"✅ Lead found: {lead.businessName}")
-        logger.info(f"📞 Phone: {lead.phone}")
-        logger.info(f"📧 Email: {lead.email}")
-        logger.info(f"📍 Address: {lead.address}")
-        logger.info(f"🌐 Website: {lead.website}")
-        
+        # Return empty leads array instead of generating fake data
         return jsonify({
             'success': True,
-            'leads': [lead.to_dict()],
-            'total': 1
+            'leads': [],
+            'total': 0,
+            'message': 'No businesses found. Try a different search term.'
         })
         
     except Exception as e:

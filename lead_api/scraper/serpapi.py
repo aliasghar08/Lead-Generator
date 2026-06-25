@@ -12,17 +12,18 @@ class SerpAPIScraper:
         self.base_url = 'https://serpapi.com/search.json'
         self.cache = {}
     
-    def search(self, business_name):
-        """Search Google Maps using SerpAPI - REAL DATA"""
+    def search(self, business_name, limit=10):
+        """Search Google Maps using SerpAPI - Return ALL results"""
         try:
             # Check cache first
-            if business_name in self.cache:
+            cache_key = f"{business_name}_{limit}"
+            if cache_key in self.cache:
                 logger.info(f"📦 Returning cached data for: {business_name}")
-                return self.cache[business_name]
+                return self.cache[cache_key]
             
             if not self.api_key:
                 logger.warning("⚠️ No SerpAPI key found!")
-                return None
+                return []
             
             logger.info(f"🔍 Searching SerpAPI for: {business_name}")
             
@@ -43,40 +44,42 @@ class SerpAPIScraper:
             # Check if we got results
             if not data.get('local_results'):
                 logger.info(f"No results found for: {business_name}")
-                return None
+                return []
             
-            # Get first result
-            place = data['local_results'][0]
+            # Get ALL results (not just first)
+            all_results = []
             
-            result = {
-                'name': place.get('title', business_name),
-                'phone': place.get('phone', ''),
-                'address': place.get('address', ''),
-                'website': place.get('website', ''),
-                'rating': place.get('rating', ''),
-                'reviews': place.get('reviews', ''),
-                'owner': '',
-                'social': ''
-            }
+            for place in data['local_results'][:limit]:
+                result = {
+                    'name': place.get('title', business_name),
+                    'phone': place.get('phone', ''),
+                    'address': place.get('address', ''),
+                    'website': place.get('website', ''),
+                    'rating': place.get('rating', ''),
+                    'reviews': place.get('reviews', ''),
+                    'place_id': place.get('place_id', ''),
+                    'owner': '',
+                    'social': ''
+                }
+                
+                # If no phone, try to get from place details
+                if not result['phone'] and result['place_id']:
+                    details = self._get_place_details(result['place_id'])
+                    if details:
+                        result['phone'] = details.get('phone', '')
+                        result['website'] = details.get('website', result['website'])
+                
+                all_results.append(result)
             
-            # If no phone, try to get from place details
-            if not result['phone'] and place.get('place_id'):
-                details = self._get_place_details(place['place_id'])
-                if details:
-                    result['phone'] = details.get('phone', '')
-                    result['website'] = details.get('website', result['website'])
+            # Cache the results
+            self.cache[cache_key] = all_results
+            logger.info(f"✅ Found {len(all_results)} results for: {business_name}")
             
-            # Cache the result
-            self.cache[business_name] = result
-            logger.info(f"✅ Found real data: {result['name']}")
-            logger.info(f"📞 Phone: {result['phone']}")
-            logger.info(f"📍 Address: {result['address']}")
-            
-            return result
+            return all_results
             
         except Exception as e:
             logger.error(f"Error with SerpAPI: {e}")
-            return None
+            return []
     
     def _get_place_details(self, place_id):
         """Get additional details for a place"""

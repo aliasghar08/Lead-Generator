@@ -21,20 +21,17 @@ class _HomeScreenState extends State<HomeScreen> {
   final _searchController = TextEditingController();
   int _selectedIndex = 0;
   
-  // Add this to cache the saved leads
   List<Lead>? _cachedSavedLeads;
   bool _isLoadingSaved = false;
 
   @override
   void initState() {
     super.initState();
-    // Load saved leads once when screen initializes
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _loadSavedLeads();
     });
   }
 
-  // Load saved leads once
   Future<void> _loadSavedLeads() async {
     if (_isLoadingSaved) return;
     _isLoadingSaved = true;
@@ -54,7 +51,6 @@ class _HomeScreenState extends State<HomeScreen> {
     }
   }
 
-  // Refresh saved leads (call after save/delete)
   Future<void> _refreshSavedLeads() async {
     try {
       final provider = Provider.of<LeadProvider>(context, listen: false);
@@ -73,7 +69,6 @@ class _HomeScreenState extends State<HomeScreen> {
       appBar: AppBar(
         title: const Text('Lead Generator'),
         actions: [
-          // Export button
           IconButton(
             icon: const Icon(Icons.download),
             tooltip: 'Export leads to CSV',
@@ -90,7 +85,6 @@ class _HomeScreenState extends State<HomeScreen> {
               }
             },
           ),
-          // Settings button
           IconButton(
             icon: const Icon(Icons.settings),
             tooltip: 'Settings',
@@ -101,7 +95,6 @@ class _HomeScreenState extends State<HomeScreen> {
               );
             },
           ),
-          // Logout button
           IconButton(
             icon: const Icon(Icons.logout),
             tooltip: 'Logout',
@@ -123,7 +116,6 @@ class _HomeScreenState extends State<HomeScreen> {
         onTap: (index) {
           setState(() {
             _selectedIndex = index;
-            // Refresh saved leads when switching to saved tab
             if (index == 1) {
               _refreshSavedLeads();
             }
@@ -289,13 +281,18 @@ class _HomeScreenState extends State<HomeScreen> {
                               'Try searching with a different business name',
                               style: TextStyle(color: Colors.grey[500]),
                             ),
+                            const SizedBox(height: 8),
+                            Text(
+                              'Example: "Apollo Hospital Mumbai"',
+                              style: TextStyle(color: Colors.grey[400], fontSize: 12),
+                            ),
                             const SizedBox(height: 16),
                             Wrap(
                               spacing: 8,
                               children: [
-                                _buildExampleChip('Sunrise Dental'),
-                                _buildExampleChip('ABC Clinic'),
-                                _buildExampleChip('City Hospital'),
+                                _buildExampleChip('Apollo Hospital Mumbai'),
+                                _buildExampleChip('Taj Hotel Mumbai'),
+                                _buildExampleChip('Dominos Mumbai'),
                               ],
                             ),
                           ],
@@ -305,7 +302,7 @@ class _HomeScreenState extends State<HomeScreen> {
                         itemCount: leadProvider.leads.length,
                         itemBuilder: (context, index) {
                           final lead = leadProvider.leads[index];
-                          return _buildLeadCard(lead, leadProvider);
+                          return _buildLeadCard(lead, leadProvider, index);
                         },
                       ),
           ),
@@ -315,7 +312,6 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Widget _buildSavedLeadsTab() {
-    // Use cached leads instead of FutureBuilder
     if (_isLoadingSaved) {
       return const Center(
         child: Column(
@@ -370,7 +366,6 @@ class _HomeScreenState extends State<HomeScreen> {
 
     return Column(
       children: [
-        // Saved leads count
         Padding(
           padding: const EdgeInsets.all(16),
           child: Row(
@@ -380,7 +375,6 @@ class _HomeScreenState extends State<HomeScreen> {
                 '${leads.length} saved leads',
                 style: Theme.of(context).textTheme.titleMedium,
               ),
-              // Delete all button
               TextButton.icon(
                 onPressed: () {
                   _showDeleteAllDialog();
@@ -408,7 +402,7 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  Widget _buildLeadCard(Lead lead, LeadProvider provider) {
+  Widget _buildLeadCard(Lead lead, LeadProvider provider, int index) {
     return Card(
       margin: const EdgeInsets.only(bottom: 12),
       elevation: 2,
@@ -419,6 +413,26 @@ class _HomeScreenState extends State<HomeScreen> {
           children: [
             Row(
               children: [
+                // Result number badge
+                Container(
+                  width: 28,
+                  height: 28,
+                  decoration: BoxDecoration(
+                    color: Theme.of(context).primaryColor,
+                    shape: BoxShape.circle,
+                  ),
+                  child: Center(
+                    child: Text(
+                      '${index + 1}',
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 12,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 12),
                 Expanded(
                   child: Text(
                     lead.businessName,
@@ -439,7 +453,6 @@ class _HomeScreenState extends State<HomeScreen> {
                         backgroundColor: Colors.green,
                         textColor: Colors.white,
                       );
-                      // Refresh saved leads after saving
                       await _refreshSavedLeads();
                     } catch (e) {
                       Fluttertoast.showToast(
@@ -504,7 +517,6 @@ class _HomeScreenState extends State<HomeScreen> {
                         backgroundColor: Colors.orange,
                         textColor: Colors.white,
                       );
-                      // Refresh saved leads after deletion
                       await _refreshSavedLeads();
                     } catch (e) {
                       Fluttertoast.showToast(
@@ -576,8 +588,6 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  // ===== HELPER METHODS =====
-
   void _performSearch(String query, LeadProvider provider) async {
     FocusScope.of(context).unfocus();
     final results = await provider.searchLeads(query);
@@ -600,7 +610,6 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  // ===== EXPORT CSV =====
   Future<void> _exportLeadsToCSV(List<Lead> leads) async {
     try {
       StringBuffer csvBuffer = StringBuffer();
