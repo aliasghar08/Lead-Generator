@@ -5,6 +5,7 @@ import 'package:fluttertoast/fluttertoast.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:path_provider/path_provider.dart';
 import 'dart:io';
+import 'package:url_launcher/url_launcher.dart';
 import '../providers/auth_provider.dart';
 import '../providers/lead_provider.dart';
 import '../models/lead_model.dart';
@@ -23,6 +24,7 @@ class _HomeScreenState extends State<HomeScreen> {
   
   List<Lead>? _cachedSavedLeads;
   bool _isLoadingSaved = false;
+  Set<String> _savedLeadIds = {};  // Track saved leads
 
   @override
   void initState() {
@@ -41,6 +43,7 @@ class _HomeScreenState extends State<HomeScreen> {
       final leads = await provider.getSavedLeads();
       setState(() {
         _cachedSavedLeads = leads;
+        _savedLeadIds = leads.map((l) => l.id ?? '').toSet();
         _isLoadingSaved = false;
       });
     } catch (e) {
@@ -57,14 +60,26 @@ class _HomeScreenState extends State<HomeScreen> {
       final leads = await provider.getSavedLeads();
       setState(() {
         _cachedSavedLeads = leads;
+        _savedLeadIds = leads.map((l) => l.id ?? '').toSet();
       });
     } catch (e) {
       print('Error refreshing saved leads: $e');
     }
   }
 
+  // Check if a lead is saved (by ID)
+  bool _isLeadSaved(Lead lead) {
+    // For search results, check by businessName since they don't have IDs yet
+    if (lead.id == null || lead.id!.isEmpty) {
+      return _cachedSavedLeads?.any((l) => l.businessName == lead.businessName) ?? false;
+    }
+    return _savedLeadIds.contains(lead.id);
+  }
+
   @override
   Widget build(BuildContext context) {
+    final isDarkMode = Theme.of(context).brightness == Brightness.dark;
+    
     return Scaffold(
       appBar: AppBar(
         title: const Text('Lead Generator'),
@@ -137,6 +152,7 @@ class _HomeScreenState extends State<HomeScreen> {
 
   Widget _buildSearchTab() {
     final leadProvider = Provider.of<LeadProvider>(context);
+    final isDarkMode = Theme.of(context).brightness == Brightness.dark;
     
     return Padding(
       padding: const EdgeInsets.all(16.0),
@@ -155,7 +171,10 @@ class _HomeScreenState extends State<HomeScreen> {
                       borderRadius: BorderRadius.circular(12),
                     ),
                     filled: true,
-                    fillColor: Colors.grey[100],
+                    fillColor: isDarkMode ? Colors.grey[800] : Colors.grey[100],
+                  ),
+                  style: TextStyle(
+                    color: isDarkMode ? Colors.white : Colors.black,
                   ),
                   onSubmitted: (value) {
                     if (value.isNotEmpty) {
@@ -200,22 +219,24 @@ class _HomeScreenState extends State<HomeScreen> {
             Container(
               padding: const EdgeInsets.all(12),
               decoration: BoxDecoration(
-                color: Colors.red[50],
+                color: isDarkMode ? Colors.red[900] : Colors.red[50],
                 borderRadius: BorderRadius.circular(8),
-                border: Border.all(color: Colors.red[200]!),
+                border: Border.all(color: isDarkMode ? Colors.red[700]! : Colors.red[200]!),
               ),
               child: Row(
                 children: [
-                  Icon(Icons.error, color: Colors.red[400]),
+                  Icon(Icons.error, color: isDarkMode ? Colors.red[300] : Colors.red[400]),
                   const SizedBox(width: 8),
                   Expanded(
                     child: Text(
                       leadProvider.errorMessage!,
-                      style: TextStyle(color: Colors.red[700]),
+                      style: TextStyle(
+                        color: isDarkMode ? Colors.red[300] : Colors.red[700],
+                      ),
                     ),
                   ),
                   IconButton(
-                    icon: Icon(Icons.close, size: 20, color: Colors.red[400]),
+                    icon: Icon(Icons.close, size: 20, color: isDarkMode ? Colors.red[300] : Colors.red[400]),
                     onPressed: () {
                       leadProvider.clearError();
                     },
@@ -233,7 +254,9 @@ class _HomeScreenState extends State<HomeScreen> {
               children: [
                 Text(
                   'Found ${leadProvider.leads.length} leads',
-                  style: Theme.of(context).textTheme.titleMedium,
+                  style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                    color: isDarkMode ? Colors.white : Colors.black,
+                  ),
                 ),
                 TextButton(
                   onPressed: () {
@@ -267,24 +290,29 @@ class _HomeScreenState extends State<HomeScreen> {
                             Icon(
                               Icons.search_off,
                               size: 80,
-                              color: Colors.grey[400],
+                              color: isDarkMode ? Colors.grey[600] : Colors.grey[400],
                             ),
                             const SizedBox(height: 16),
                             Text(
                               'No leads found',
                               style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                                    color: Colors.grey[600],
+                                    color: isDarkMode ? Colors.grey[400] : Colors.grey[600],
                                   ),
                             ),
                             const SizedBox(height: 8),
                             Text(
                               'Try searching with a different business name',
-                              style: TextStyle(color: Colors.grey[500]),
+                              style: TextStyle(
+                                color: isDarkMode ? Colors.grey[500] : Colors.grey[500],
+                              ),
                             ),
                             const SizedBox(height: 8),
                             Text(
                               'Example: "Apollo Hospital Mumbai"',
-                              style: TextStyle(color: Colors.grey[400], fontSize: 12),
+                              style: TextStyle(
+                                color: isDarkMode ? Colors.grey[600] : Colors.grey[400],
+                                fontSize: 12,
+                              ),
                             ),
                             const SizedBox(height: 16),
                             Wrap(
@@ -312,6 +340,8 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Widget _buildSavedLeadsTab() {
+    final isDarkMode = Theme.of(context).brightness == Brightness.dark;
+    
     if (_isLoadingSaved) {
       return const Center(
         child: Column(
@@ -335,19 +365,21 @@ class _HomeScreenState extends State<HomeScreen> {
             Icon(
               Icons.bookmark_border,
               size: 80,
-              color: Colors.grey[400],
+              color: isDarkMode ? Colors.grey[600] : Colors.grey[400],
             ),
             const SizedBox(height: 16),
             Text(
               'No saved leads',
               style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                    color: Colors.grey[600],
+                    color: isDarkMode ? Colors.grey[400] : Colors.grey[600],
                   ),
             ),
             const SizedBox(height: 8),
             Text(
               'Save leads from the search tab',
-              style: TextStyle(color: Colors.grey[500]),
+              style: TextStyle(
+                color: isDarkMode ? Colors.grey[500] : Colors.grey[500],
+              ),
             ),
             const SizedBox(height: 16),
             ElevatedButton.icon(
@@ -373,7 +405,9 @@ class _HomeScreenState extends State<HomeScreen> {
             children: [
               Text(
                 '${leads.length} saved leads',
-                style: Theme.of(context).textTheme.titleMedium,
+                style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                  color: isDarkMode ? Colors.white : Colors.black,
+                ),
               ),
               TextButton.icon(
                 onPressed: () {
@@ -403,9 +437,13 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Widget _buildLeadCard(Lead lead, LeadProvider provider, int index) {
+    final isDarkMode = Theme.of(context).brightness == Brightness.dark;
+    final isSaved = _isLeadSaved(lead);
+    
     return Card(
       margin: const EdgeInsets.only(bottom: 12),
       elevation: 2,
+      color: isDarkMode ? Colors.grey[850] : Colors.white,
       child: Padding(
         padding: const EdgeInsets.all(16),
         child: Column(
@@ -436,30 +474,48 @@ class _HomeScreenState extends State<HomeScreen> {
                 Expanded(
                   child: Text(
                     lead.businessName,
-                    style: const TextStyle(
+                    style: TextStyle(
                       fontSize: 18,
                       fontWeight: FontWeight.bold,
+                      color: isDarkMode ? Colors.white : Colors.black,
                     ),
                   ),
                 ),
+                // Bookmark icon changes based on saved state
                 IconButton(
-                  icon: const Icon(Icons.bookmark_border),
-                  tooltip: 'Save lead',
+                  icon: Icon(
+                    isSaved ? Icons.bookmark : Icons.bookmark_border,
+                    color: isSaved ? Colors.green : (isDarkMode ? Colors.grey[400] : Colors.grey[600]),
+                  ),
+                  tooltip: isSaved ? 'Saved' : 'Save lead',
                   onPressed: () async {
-                    try {
-                      await provider.saveLead(lead);
+                    if (isSaved) {
+                      // If already saved, show message
                       Fluttertoast.showToast(
-                        msg: 'Lead saved!',
-                        backgroundColor: Colors.green,
+                        msg: 'Lead already saved!',
+                        backgroundColor: Colors.orange,
                         textColor: Colors.white,
                       );
-                      await _refreshSavedLeads();
-                    } catch (e) {
-                      Fluttertoast.showToast(
-                        msg: 'Failed to save: ${e.toString()}',
-                        backgroundColor: Colors.red,
-                        textColor: Colors.white,
-                      );
+                    } else {
+                      try {
+                        await provider.saveLead(lead);
+                        // Update saved state
+                        setState(() {
+                          _savedLeadIds.add(lead.id ?? lead.businessName);
+                          _refreshSavedLeads();
+                        });
+                        Fluttertoast.showToast(
+                          msg: 'Lead saved!',
+                          backgroundColor: Colors.green,
+                          textColor: Colors.white,
+                        );
+                      } catch (e) {
+                        Fluttertoast.showToast(
+                          msg: 'Failed to save: ${e.toString()}',
+                          backgroundColor: Colors.red,
+                          textColor: Colors.white,
+                        );
+                      }
                     }
                   },
                 ),
@@ -467,17 +523,17 @@ class _HomeScreenState extends State<HomeScreen> {
             ),
             const SizedBox(height: 8),
             if (lead.ownerName.isNotEmpty)
-              _buildInfoRow(Icons.person, lead.ownerName),
+              _buildInfoRow(Icons.person, lead.ownerName, isDarkMode),
             if (lead.phone.isNotEmpty)
-              _buildInfoRow(Icons.phone, lead.phone, isClickable: true),
+              _buildInfoRow(Icons.phone, lead.phone, isDarkMode, isClickable: true, isPhone: true),
             if (lead.email.isNotEmpty)
-              _buildInfoRow(Icons.email, lead.email, isClickable: true),
+              _buildInfoRow(Icons.email, lead.email, isDarkMode, isClickable: true, isEmail: true),
             if (lead.socialMedia.isNotEmpty)
-              _buildInfoRow(Icons.share, lead.socialMedia, isClickable: true),
+              _buildInfoRow(Icons.share, lead.socialMedia, isDarkMode, isClickable: true, isSocial: true),
             if (lead.address.isNotEmpty)
-              _buildInfoRow(Icons.location_on, lead.address),
+              _buildInfoRow(Icons.location_on, lead.address, isDarkMode),
             if (lead.website.isNotEmpty)
-              _buildInfoRow(Icons.language, lead.website, isClickable: true),
+              _buildInfoRow(Icons.language, lead.website, isDarkMode, isClickable: true, isWebsite: true),
           ],
         ),
       ),
@@ -486,10 +542,12 @@ class _HomeScreenState extends State<HomeScreen> {
 
   Widget _buildSavedLeadCard(Lead lead) {
     final provider = Provider.of<LeadProvider>(context, listen: false);
+    final isDarkMode = Theme.of(context).brightness == Brightness.dark;
     
     return Card(
       margin: const EdgeInsets.only(bottom: 12),
       elevation: 2,
+      color: isDarkMode ? Colors.grey[850] : Colors.white,
       child: Padding(
         padding: const EdgeInsets.all(16),
         child: Column(
@@ -500,9 +558,10 @@ class _HomeScreenState extends State<HomeScreen> {
                 Expanded(
                   child: Text(
                     lead.businessName,
-                    style: const TextStyle(
+                    style: TextStyle(
                       fontSize: 18,
                       fontWeight: FontWeight.bold,
+                      color: isDarkMode ? Colors.white : Colors.black,
                     ),
                   ),
                 ),
@@ -512,6 +571,9 @@ class _HomeScreenState extends State<HomeScreen> {
                   onPressed: () async {
                     try {
                       await provider.deleteLead(lead.id!);
+                      setState(() {
+                        _savedLeadIds.remove(lead.id);
+                      });
                       Fluttertoast.showToast(
                         msg: 'Lead deleted',
                         backgroundColor: Colors.orange,
@@ -531,46 +593,60 @@ class _HomeScreenState extends State<HomeScreen> {
             ),
             const SizedBox(height: 8),
             if (lead.ownerName.isNotEmpty)
-              _buildInfoRow(Icons.person, lead.ownerName),
+              _buildInfoRow(Icons.person, lead.ownerName, isDarkMode),
             if (lead.phone.isNotEmpty)
-              _buildInfoRow(Icons.phone, lead.phone, isClickable: true),
+              _buildInfoRow(Icons.phone, lead.phone, isDarkMode, isClickable: true, isPhone: true),
             if (lead.email.isNotEmpty)
-              _buildInfoRow(Icons.email, lead.email, isClickable: true),
+              _buildInfoRow(Icons.email, lead.email, isDarkMode, isClickable: true, isEmail: true),
             if (lead.socialMedia.isNotEmpty)
-              _buildInfoRow(Icons.share, lead.socialMedia, isClickable: true),
+              _buildInfoRow(Icons.share, lead.socialMedia, isDarkMode, isClickable: true, isSocial: true),
             if (lead.address.isNotEmpty)
-              _buildInfoRow(Icons.location_on, lead.address),
+              _buildInfoRow(Icons.location_on, lead.address, isDarkMode),
             if (lead.website.isNotEmpty)
-              _buildInfoRow(Icons.language, lead.website, isClickable: true),
+              _buildInfoRow(Icons.language, lead.website, isDarkMode, isClickable: true, isWebsite: true),
           ],
         ),
       ),
     );
   }
 
-  Widget _buildInfoRow(IconData icon, String text, {bool isClickable = false}) {
+  Widget _buildInfoRow(IconData icon, String text, bool isDarkMode, {
+    bool isClickable = false,
+    bool isPhone = false,
+    bool isEmail = false,
+    bool isWebsite = false,
+    bool isSocial = false,
+  }) {
+    Color textColor;
+    if (isClickable) {
+      textColor = isDarkMode ? Colors.lightBlue[300]! : Colors.blue[700]!;
+    } else {
+      textColor = isDarkMode ? Colors.grey[300]! : Colors.grey[800]!;
+    }
+    
     return Padding(
       padding: const EdgeInsets.only(bottom: 4),
       child: InkWell(
-        onTap: isClickable ? () => _copyToClipboard(text) : null,
+        onTap: isClickable ? () => _handleTap(text, isPhone, isEmail, isWebsite, isSocial) : null,
         child: Row(
           children: [
-            Icon(icon, size: 16, color: Colors.grey[600]),
+            Icon(icon, size: 16, color: isDarkMode ? Colors.grey[400] : Colors.grey[600]),
             const SizedBox(width: 8),
             Expanded(
               child: Text(
                 text,
                 style: TextStyle(
-                  color: isClickable ? Colors.blue[700] : Colors.grey[800],
+                  color: textColor,
                   decoration: isClickable ? TextDecoration.underline : null,
+                  fontSize: 14,
                 ),
               ),
             ),
             if (isClickable)
               Icon(
-                Icons.copy,
+                Icons.open_in_new,
                 size: 14,
-                color: Colors.grey[400],
+                color: isDarkMode ? Colors.grey[500] : Colors.grey[400],
               ),
           ],
         ),
@@ -578,9 +654,84 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
+  Future<void> _handleTap(String text, bool isPhone, bool isEmail, bool isWebsite, bool isSocial) async {
+    try {
+      String url;
+      
+      if (isPhone) {
+        // Clean phone number
+        String phone = text.replaceAll(RegExp(r'[\s\-\(\)]'), '');
+        if (phone.startsWith('+91') || phone.startsWith('0')) {
+          // Keep as is
+        } else if (phone.startsWith('+')) {
+          // International format
+        } else {
+          // Add +91 if not present
+          phone = '+91$phone';
+        }
+        url = 'tel:$phone';
+      } else if (isEmail) {
+        url = 'mailto:$text';
+      } else if (isWebsite) {
+        if (!text.startsWith('http://') && !text.startsWith('https://')) {
+          url = 'https://$text';
+        } else {
+          url = text;
+        }
+      } else if (isSocial) {
+        // For social media, try to open with https
+        if (text.startsWith('@')) {
+          // Instagram handle
+          url = 'https://instagram.com/${text.substring(1)}';
+        } else if (text.contains('facebook.com')) {
+          url = 'https://$text';
+        } else {
+          url = 'https://$text';
+        }
+      } else {
+        // Default: try to open as website
+        if (!text.startsWith('http://') && !text.startsWith('https://')) {
+          url = 'https://$text';
+        } else {
+          url = text;
+        }
+      }
+      
+      final Uri uri = Uri.parse(url);
+      
+      if (await canLaunchUrl(uri)) {
+        await launchUrl(uri, mode: LaunchMode.externalApplication);
+      } else {
+        // If phone/email fails, copy to clipboard
+        await Clipboard.setData(ClipboardData(text: text));
+        Fluttertoast.showToast(
+          msg: 'Copied to clipboard!',
+          backgroundColor: Colors.blue,
+          textColor: Colors.white,
+        );
+      }
+    } catch (e) {
+      // On error, copy to clipboard
+      await Clipboard.setData(ClipboardData(text: text));
+      Fluttertoast.showToast(
+        msg: 'Copied to clipboard!',
+        backgroundColor: Colors.blue,
+        textColor: Colors.white,
+      );
+    }
+  }
+
   Widget _buildExampleChip(String label) {
+    final isDarkMode = Theme.of(context).brightness == Brightness.dark;
+    
     return ActionChip(
-      label: Text(label),
+      label: Text(
+        label,
+        style: TextStyle(
+          color: isDarkMode ? Colors.white : Colors.black,
+        ),
+      ),
+      backgroundColor: isDarkMode ? Colors.grey[800] : Colors.grey[200],
       onPressed: () {
         _searchController.text = label;
         _performSearch(label, Provider.of<LeadProvider>(context, listen: false));
@@ -706,6 +857,9 @@ class _HomeScreenState extends State<HomeScreen> {
               Navigator.pop(context);
               try {
                 await provider.deleteAllLeads();
+                setState(() {
+                  _savedLeadIds.clear();
+                });
                 Fluttertoast.showToast(
                   msg: 'All leads deleted',
                   backgroundColor: Colors.orange,
