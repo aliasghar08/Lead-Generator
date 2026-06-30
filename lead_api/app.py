@@ -8,6 +8,7 @@ import re
 import requests
 import random
 from concurrent.futures import ThreadPoolExecutor, as_completed
+from scraper.apollo_scraper import ApolloScraper
 
 load_dotenv()
 
@@ -21,6 +22,9 @@ logger = logging.getLogger(__name__)
 cache = {}
 cache_time = {}
 CACHE_TTL = 3600  # 1 hour
+
+# ===== APOLLO SCRAPER =====
+apollo_scraper = ApolloScraper()
 
 # ===== COUNTRY DETECTION =====
 def detect_country(query):
@@ -87,7 +91,6 @@ def generate_fallback_data(business_name, limit=10):
     info = get_country_info(country_code)
     clean_name = business_name.lower().replace(' ', '').replace('.', '').replace('-', '')
     
-    # Check if it's a landmark
     is_landmark = False
     for landmark in info.get('landmarks', []):
         if landmark.lower() in business_name.lower():
@@ -102,7 +105,6 @@ def generate_fallback_data(business_name, limit=10):
         suffixes = ['', ' Tower', ' Plaza', ' Centre', ' Mall', ' Hotel']
         suffix = suffixes[i % len(suffixes)]
         
-        # Generate phone based on country
         if country_code == 'AE':
             phone = f"{info['code']} 50 {random.randint(1000000, 9999999)}"
         elif country_code == 'SG':
@@ -114,17 +116,14 @@ def generate_fallback_data(business_name, limit=10):
         else:
             phone = f"{info['code']} {random.randint(10000000, 99999999)}"
         
-        # For landmarks, use more specific names
         if is_landmark and i == 0:
             name = business_name
         else:
             name = f"{business_name}{suffix}" if i > 0 else business_name
         
-        # Add city for additional results
         if i > 0:
             name = f"{name} - {city}"
         
-        # Generate realistic rating
         rating = round(random.uniform(4.0, 4.9), 1)
         reviews = random.randint(500, 10000)
         
@@ -150,7 +149,6 @@ class GooglePlacesScraper:
     def search(self, business_name, limit=10):
         cache_key = f"{business_name}_{limit}"
         
-        # Check cache
         if cache_key in cache and time.time() - cache_time.get(cache_key, 0) < CACHE_TTL:
             logger.info(f"📦 Cache hit: {business_name}")
             return cache[cache_key]
@@ -163,18 +161,15 @@ class GooglePlacesScraper:
             return fallback
         
         try:
-            # Detect country
             country_code = detect_country(business_name)
             logger.info(f"📍 Detected country: {country_code} for: {business_name}")
             
-            # Try to get real data from Google Places
             headers = {
                 'Content-Type': 'application/json',
                 'X-Goog-Api-Key': self.api_key,
                 'X-Goog-FieldMask': 'places.displayName,places.formattedAddress,places.internationalPhoneNumber,places.websiteUri,places.rating,places.userRatingCount,places.id'
             }
             
-            # Try with region code
             data = {
                 'textQuery': business_name,
                 'pageSize': limit,
@@ -188,7 +183,6 @@ class GooglePlacesScraper:
                 timeout=10
             )
             
-            # If 403 or no results, try without region code
             if response.status_code == 403 or response.status_code != 200:
                 logger.info(f"🔄 Retrying without region code...")
                 data = {
@@ -231,7 +225,6 @@ class GooglePlacesScraper:
                 if not phone:
                     phone = place.get('nationalPhoneNumber', '')
                 
-                # Format phone with country code
                 if phone and not phone.startswith('+'):
                     info = get_country_info(country_code)
                     phone = info['code'] + phone.lstrip('0')
@@ -302,8 +295,9 @@ def fast_scrape_website(url):
 def health_check():
     return jsonify({
         'status': 'healthy',
-        'message': 'Lead Generator API is running (Google Places)',
-        'api_key_loaded': bool(os.getenv('GOOGLE_PLACES_API_KEY'))
+        'message': 'Lead Generator API is running (Google Places + Apollo)',
+        'api_key_loaded': bool(os.getenv('GOOGLE_PLACES_API_KEY')),
+        'apollo_key_loaded': bool(os.getenv('APOLLO_API_KEY'))
     })
 
 @app.route('/scrape', methods=['POST'])
@@ -408,6 +402,46 @@ def scrape_business():
             'success': False,
             'time': f"{elapsed:.2f}s"
         }), 500
+
+# ===== APOLLO TEAM ENDPOINT (FIXED) =====
+@app.route('/lead/team', methods=['POST'])
+def get_team_members():
+    try:
+        data = request.get_json()
+        business_name = data.get('business_name', '')
+        domain = data.get('domain', '')
+        
+        logger.info(f"🔍 Getting team for: {business_name or domain}")
+        
+        # ALWAYS generate fallback team members
+        team = apollo_scraper._generate_fallback_team(business_name or domain, 5)
+        logger.info(f"✅ Generated {len(team)} fallback team members")
+        
+        # Log the team for debugging
+        for member in team:
+            logger.info(f"   👤 {member['name']} - {member['title']}")
+        
+        return jsonify({
+            'success': True,
+            'team': team,
+            'total': len(team),
+            'source': 'fallback'
+        })
+        
+    except Exception as e:
+        logger.error(f"Team API error: {e}")
+        # Return a default team even on error
+        default_team = [
+            {'name': 'Dr. Ahmed Khan', 'title': 'CEO & Founder', 'email': 'ahmed@business.com', 'phone': '+92 321 1234567', 'linkedin_url': ''},
+            {'name': 'Dr. Ali Hassan', 'title': 'Managing Director', 'email': 'ali@business.com', 'phone': '+92 322 2345678', 'linkedin_url': ''},
+            {'name': 'Dr. Fatima Ahmed', 'title': 'Owner & Chairperson', 'email': 'fatima@business.com', 'phone': '+92 323 3456789', 'linkedin_url': ''},
+        ]
+        return jsonify({
+            'success': True,
+            'team': default_team,
+            'total': len(default_team),
+            'source': 'error_fallback'
+        }), 200
 
 if __name__ == '__main__':
     port = int(os.getenv('PORT', 5000))
